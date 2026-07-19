@@ -419,7 +419,7 @@ export default function AIScreen({ route, navigation }) {
           <TouchableOpacity
             key={i}
             style={styles.lawRefCustom}
-            onPress={() => navigation.navigate('LawDetail', { law: { number: law.code.replace(/\D/g, ''), title: law.title, category: law.code } })}
+            onPress={() => navigation.navigate('LawDetail', { law: { number: law.article.replace(/\D/g, ''), title: law.code, category: law.code } })}
           >
             <View style={styles.lawRefLeft}>
               <Text style={styles.lawRefCode}>{law.code} · {law.article}</Text>
