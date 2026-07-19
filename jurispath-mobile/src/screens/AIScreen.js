@@ -6,6 +6,8 @@ import { colors, typography, spacing, radius, shadows } from '../theme';
 import { Badge, Card, ConfidenceMeter, Button, HeroGradient, ThreeDOrb, SkeletonCard } from '../components/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 
 // ─── ANIMATED MESSAGE WRAPPER ─────────────────────────────
 function AnimatedMessage({ children, isUser }) {
@@ -79,9 +81,71 @@ export default function AIScreen({ route, navigation }) {
   const [currentConvId, setCurrentConvId] = useState(null);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [selectedFile, setSelectedFile] = useState(null);
   const scrollRef = useRef(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
+
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("İzin Gerekli", "Fotoğraf seçebilmek için galeri izni vermeniz gerekmektedir.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selected = result.assets[0];
+        setSelectedFile({
+          uri: selected.uri,
+          name: selected.fileName || 'fotograf.jpg',
+          type: 'image',
+          mimeType: 'image/jpeg',
+        });
+      }
+    } catch (err) {
+      console.warn("Resim seçme hatası:", err);
+    }
+  };
+
+  const pickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selected = result.assets[0];
+        setSelectedFile({
+          uri: selected.uri,
+          name: selected.name,
+          type: 'document',
+          mimeType: selected.mimeType || 'application/octet-stream',
+        });
+      }
+    } catch (err) {
+      console.warn("Doküman seçme hatası:", err);
+    }
+  };
+
+  const handleAttachmentPress = () => {
+    Alert.alert(
+      "Dosya Ekle",
+      "Analiz edilmesini istediğiniz belgeyi veya fotoğrafı seçin:",
+      [
+        { text: "Fotoğraf Yükle", onPress: pickImage },
+        { text: "Belge Yükle", onPress: pickDocument },
+        { text: "Vazgeç", style: "cancel" }
+      ]
+    );
+  };
 
   React.useEffect(() => {
     const onShow = (e) => {
@@ -123,7 +187,8 @@ export default function AIScreen({ route, navigation }) {
 
   const sendMessage = async (textToSend = input) => {
     const queryText = textToSend || '';
-    if (!queryText.trim() || loading) return;
+    if (!queryText.trim() && !selectedFile) return;
+    if (loading) return;
 
     // Check credits
     if (credits <= 0) {
@@ -138,9 +203,19 @@ export default function AIScreen({ route, navigation }) {
       return;
     }
 
-    const userMsg = { id: Date.now().toString(), type: 'user', text: queryText };
+    const userMsg = { 
+      id: Date.now().toString(), 
+      type: 'user', 
+      text: queryText,
+      file: selectedFile ? { name: selectedFile.name, type: selectedFile.type } : null
+    };
     setMessages(prev => [...prev, userMsg]);
+    
+    // Cache the selected file before resetting
+    const fileToSend = selectedFile;
+    
     setInput('');
+    setSelectedFile(null);
     setLoading(true);
 
     let activeId = currentConvId;
@@ -172,17 +247,25 @@ export default function AIScreen({ route, navigation }) {
     }
 
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-      };
+      const headers = {};
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const formData = new FormData();
+      formData.append('problem', queryText);
+      if (fileToSend) {
+        formData.append('file', {
+          uri: fileToSend.uri,
+          name: fileToSend.name,
+          type: fileToSend.mimeType || (fileToSend.type === 'image' ? 'image/jpeg' : 'application/octet-stream'),
+        });
       }
 
       const response = await fetch('http://192.168.1.104:8000/analyze', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ problem: queryText }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -498,7 +581,15 @@ export default function AIScreen({ route, navigation }) {
             <AnimatedMessage key={msg.id} isUser={msg.type === 'user'}>
               <View style={msg.type === 'user' ? styles.userBubble : styles.aiBubble}>
                 {msg.type === 'user' ? (
-                  <Text style={styles.userText}>{msg.text}</Text>
+                  <View>
+                    {msg.file && (
+                      <View style={styles.bubbleAttachment}>
+                        <Feather name={msg.file.type === 'image' ? 'image' : 'file-text'} size={14} color="#ffffff" style={{ marginRight: 6 }} />
+                        <Text style={styles.bubbleAttachmentText} numberOfLines={1}>{msg.file.name}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.userText}>{msg.text}</Text>
+                  </View>
                 ) : (
                   renderAIResponse(msg)
                 )}
@@ -523,12 +614,26 @@ export default function AIScreen({ route, navigation }) {
           styles.inputContainer,
           { marginBottom: isKeyboardOpen ? 10 : (Platform.OS === 'ios' ? 104 : 92) }
         ]}>
+          {selectedFile && (
+            <View style={styles.attachmentPreview}>
+              <View style={styles.attachmentBadge}>
+                <Feather name={selectedFile.type === 'image' ? 'image' : 'file-text'} size={14} color="#0084FF" />
+                <Text style={styles.attachmentText} numberOfLines={1}>{selectedFile.name}</Text>
+                <TouchableOpacity onPress={() => setSelectedFile(null)} style={styles.attachmentClose}>
+                  <Feather name="x" size={14} color="#ef4444" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <LinearGradient
             colors={['#ffffff', '#f4f9ff']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.inputWrapper}
           >
+            <TouchableOpacity onPress={handleAttachmentPress} style={styles.attachBtn} activeOpacity={0.7}>
+              <Feather name="plus" size={20} color="#0084FF" />
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               placeholder="Hukuki sorununuzu yazın..."
@@ -540,14 +645,14 @@ export default function AIScreen({ route, navigation }) {
             />
             <TouchableOpacity
               onPress={() => sendMessage()}
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && !selectedFile) || loading}
               activeOpacity={0.8}
             >
               <LinearGradient
-                colors={input.trim() ? ['#0084FF', '#00b4d8'] : ['#e2e8f0', '#cbd5e1']}
+                colors={(input.trim() || selectedFile) ? ['#0084FF', '#00b4d8'] : ['#e2e8f0', '#cbd5e1']}
                 style={styles.sendBtn}
               >
-                <Feather name="arrow-up" size={20} color={input.trim() ? '#ffffff' : '#94a3b8'} />
+                <Feather name="arrow-up" size={20} color={(input.trim() || selectedFile) ? '#ffffff' : '#94a3b8'} />
               </LinearGradient>
             </TouchableOpacity>
           </LinearGradient>
@@ -658,7 +763,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#cbdbea',
   },
   headerTitle: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '800',
     color: '#0a1629',
   },
@@ -822,6 +927,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
+  },
+  attachBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 132, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing[2],
+  },
+  attachmentPreview: {
+    flexDirection: 'row',
+    marginBottom: spacing[2],
+    paddingHorizontal: spacing[1],
+  },
+  attachmentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 132, 255, 0.08)',
+    paddingHorizontal: spacing[3],
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    gap: 6,
+  },
+  attachmentText: {
+    fontSize: 12,
+    color: '#0084FF',
+    fontWeight: '600',
+    maxWidth: 180,
+  },
+  attachmentClose: {
+    marginLeft: 4,
+    padding: 2,
+  },
+  bubbleAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: 4,
+    borderRadius: radius.sm,
+    marginBottom: 6,
+    alignSelf: 'flex-start',
+  },
+  bubbleAttachmentText: {
+    fontSize: 12,
+    color: colors.white,
+    fontWeight: '600',
+    maxWidth: 150,
   },
   inputWrapper: {
     flexDirection: 'row',

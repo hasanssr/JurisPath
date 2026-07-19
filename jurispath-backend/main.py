@@ -1,12 +1,15 @@
 import os
 import json
 import httpx
-from fastapi import FastAPI, HTTPException, Depends, Header
+import base64
+import io
+from fastapi import FastAPI, HTTPException, Depends, Header, Form, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from openai import OpenAI
+from pypdf import PdfReader
 
 load_dotenv()
 
@@ -174,12 +177,55 @@ async def get_current_user_and_check_credits(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Kimlik doğrulama başarısız: {str(e)}")
 
+async def process_uploaded_file(file: UploadFile) -> tuple:
+    """
+    Processes an uploaded file.
+    Returns (extracted_text, image_base64_data, mime_type)
+    """
+    if not file or not file.filename:
+        return None, None, None
+        
+    content_type = file.content_type or ""
+    filename = file.filename or ""
+    
+    if content_type.startswith("image/"):
+        file_bytes = await file.read()
+        base64_data = base64.b64encode(file_bytes).decode("utf-8")
+        return None, base64_data, content_type
+        
+    elif content_type == "application/pdf" or filename.endswith(".pdf"):
+        try:
+            pdf_bytes = await file.read()
+            pdf_file = io.BytesIO(pdf_bytes)
+            reader = PdfReader(pdf_file)
+            extracted_text = ""
+            for page in reader.pages:
+                extracted_text += (page.extract_text() or "") + "\n"
+            return extracted_text, None, None
+        except Exception as e:
+            print(f"PDF extraction error: {e}")
+            return f"[Hata: PDF dosyası okunamadı: {str(e)}]", None, None
+            
+    else:
+        # Try to read as plain text
+        try:
+            file_bytes = await file.read()
+            text = file_bytes.decode("utf-8", errors="ignore")
+            return text, None, None
+        except Exception as e:
+            return f"[Hata: Dosya okunamadı: {str(e)}]", None, None
+
 @app.post("/analyze")
-async def analiz_et(istek: SoruIstek, user_info: dict = Depends(get_current_user_and_check_credits)):
+async def analiz_et(
+    problem: str = Form(...),
+    file: UploadFile = File(None),
+    user_info: dict = Depends(get_current_user_and_check_credits)
+):
     if not openai_client:
         raise HTTPException(status_code=500, detail="OpenAI client is not configured. Please check your API key.")
 
-    problem = istek.problem
+    # Process file upload if any
+    extracted_text, image_base64, mime_type = await process_uploaded_file(file)
     
     # Retrieve relevant law articles
     relevant_laws = retrieve_relevant_laws(problem)
@@ -270,12 +316,26 @@ Veritabanından Çekilen İlgili Kanun Maddeleri (RAG Bağlamı):
 Lütfen yukarıdaki problemi analiz et ve istenen JSON formatında yanıt üret.
 """
 
+    if extracted_text:
+        user_prompt += f"\n\nKullanıcı Tarafından Yüklenen Belge/Dosya Metni:\n{extracted_text}\n"
+
+    # Multimodal message structure
+    user_content = [{"type": "text", "text": user_prompt}]
+    
+    if image_base64:
+        user_content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{mime_type};base64,{image_base64}"
+            }
+        })
+
     try:
         completion = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_content}
             ],
             response_format={"type": "json_object"}
         )
