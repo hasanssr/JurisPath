@@ -1,0 +1,37 @@
+# Root gitignore for JurisPathAi Mono-repo
+
+# Sensitive files / API Keys / Environments
+.env
+.env*
+*.pem
+*.key
+*.p12
+*.p8
+*.jks
+*.mobileprovision
+
+# Frontend (jurispath-mobile)
+jurispath-mobile/node_modules/
+jurispath-mobile/.expo/
+jurispath-mobile/dist/
+jurispath-mobile/web-build/
+jurispath-mobile/expo-env.d.ts
+jurispath-mobile/ios/
+jurispath-mobile/android/
+.metro-health-check*
+
+# Backend (jurispath-backend) & global Python envs
+venv/
+.venv/
+jurispath-backend/__pycache__/
+*.pyc
+
+# IDEs, System, and Debug Logs
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.tsbuildinfo
