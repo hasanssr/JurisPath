@@ -339,9 +339,9 @@ export default function DashboardScreen({ navigation }) {
             {LAW_CARDS.map((card) => (
               <TouchableOpacity
                 key={card.id}
-                activeOpacity={0.9}
+                activeOpacity={0.8}
                 style={styles.flipCardOuter}
-                onPress={() => setZoomedCard(card)}
+                onPress={() => navigation.navigate('AITab', { initialQuery: card.prompt })}
               >
                 <View style={styles.flipCardFace}>
                   <Image source={card.image} style={styles.flipCardImage} resizeMode="cover" />

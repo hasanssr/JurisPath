@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Share, Animated, Alert, Dimensions, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius, shadows } from '../theme';
 import { Badge, Card, ConfidenceMeter, Button, HeroGradient, ThreeDOrb, SkeletonCard } from '../components/ui';
@@ -752,54 +753,56 @@ export default function AIScreen({ route, navigation }) {
     }
   };
 
-  React.useEffect(() => {
-    if (route.params?.initialQuery) {
-      const topic = route.params.initialQuery;
-      navigation.setParams({ initialQuery: undefined });
+  useFocusEffect(
+    React.useCallback(() => {
+      if (route.params?.initialQuery) {
+        const topic = route.params.initialQuery;
+        navigation.setParams({ initialQuery: undefined });
 
-      // Create a NEW conversation session for this category card click
-      const newConvId = Date.now().toString();
-      setCurrentConvId(newConvId);
+        // Create a NEW conversation session for this category card click
+        const newConvId = Date.now().toString();
+        setCurrentConvId(newConvId);
 
-      const freeGuideMessage = {
-        id: Date.now().toString(),
-        type: 'ai',
-        isFreeGuide: true,
-        data: {
-          confidence: 100,
-          shortAnswer: `Merhaba! "${topic}" konusuyla ilgili size yardımcı olmaktan memnuniyet duyarım.`,
-          plainExplanation: `Bu başlık altında haklarınızı öğrenebilir, dilekçe oluşturabilir ve izlemeniz gereken hukuki süreç hakkında detaylı bilgi alabilirsiniz.\n\nLütfen sorunuzu veya yaşadığınız durumu aşağıdaki mesaj kutusuna yazarak gönderin.`,
-          rights: [],
-          laws: [],
-          decisions: [],
-          requiredDocs: [],
-          steps: [],
-          generatedDocs: [],
-          warnings: [],
-          followUps: [
-            `${topic} sürecinde haklarım nelerdir?`,
-            `${topic} davası veya başvurusu için izlenecek adımlar nelerdir?`
-          ]
-        },
-        question: topic
-      };
+        const freeGuideMessage = {
+          id: Date.now().toString(),
+          type: 'ai',
+          isFreeGuide: true,
+          data: {
+            confidence: 100,
+            shortAnswer: `Merhaba! "${topic}" konusuyla ilgili size yardımcı olmaktan memnuniyet duyarım.`,
+            plainExplanation: `Bu başlık altında haklarınızı öğrenebilir, dilekçe oluşturabilir ve izlemeniz gereken hukuki süreç hakkında detaylı bilgi alabilirsiniz.\n\nLütfen sorunuzu veya yaşadığınız durumu aşağıdaki mesaj kutusuna yazarak gönderin.`,
+            rights: [],
+            laws: [],
+            decisions: [],
+            requiredDocs: [],
+            steps: [],
+            generatedDocs: [],
+            warnings: [],
+            followUps: [
+              `${topic} sürecinde haklarım nelerdir?`,
+              `${topic} davası veya başvurusu için izlenecek adımlar nelerdir?`
+            ]
+          },
+          question: topic
+        };
 
-      // Start new clean chat with this guide message
-      setMessages([freeGuideMessage]);
+        // Start new clean chat with this guide message
+        setMessages([freeGuideMessage]);
 
-      const newConvItem = {
-        id: newConvId,
-        title: topic,
-        preview: `Rehber: ${topic}`,
-        date: 'Bugün',
-        messageCount: 1,
-        messages: [freeGuideMessage]
-      };
-      setConversationsList(prev => [newConvItem, ...prev]);
+        const newConvItem = {
+          id: newConvId,
+          title: topic,
+          preview: `Rehber: ${topic}`,
+          date: 'Bugün',
+          messageCount: 1,
+          messages: [freeGuideMessage]
+        };
+        setConversationsList(prev => [newConvItem, ...prev]);
 
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
-    }
-  }, [route.params?.initialQuery]);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
+      }
+    }, [route.params?.initialQuery])
+  );
 
   const handleFollowUp = (q) => {
     sendMessage(q);
