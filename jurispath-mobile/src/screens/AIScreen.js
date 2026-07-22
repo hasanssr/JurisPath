@@ -353,6 +353,17 @@ export default function AIScreen({ route, navigation }) {
     }
   };
 
+  const handleShareAIResponse = async (msg) => {
+    try {
+      const shortAns = msg.data?.shortAnswer || '';
+      const plainExp = msg.data?.plainExplanation || '';
+      const messageText = `JurisPath AI Hukuki Analiz:\n\n${shortAns}${plainExp ? '\n\n' + plainExp : ''}\n\n— JurisPath AI ile analiz edildi.`;
+      await Share.share({ message: messageText });
+    } catch (error) {
+      console.warn("Share error:", error);
+    }
+  };
+
   const handleDownloadPetitionWithCredits = async (draft) => {
     if (!draft) return;
 
@@ -1037,13 +1048,9 @@ export default function AIScreen({ route, navigation }) {
 
         {/* Basic Actions */}
         <View style={styles.aiActions}>
-          <TouchableOpacity style={styles.aiActionBtn}>
-            <Feather name="bookmark" size={14} color={colors.gray[500]} />
-            <Text style={styles.aiActionText}>Kaydet</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.aiActionBtn}>
-            <Feather name="share" size={14} color={colors.gray[500]} />
-            <Text style={styles.aiActionText}>Paylaş</Text>
+          <TouchableOpacity style={styles.aiActionBtn} onPress={() => handleShareAIResponse(msg)} activeOpacity={0.7}>
+            <Feather name="share-2" size={14} color={colors.teal[600]} />
+            <Text style={[styles.aiActionText, { color: colors.teal[700], fontWeight: '600' }]}>Paylaş</Text>
           </TouchableOpacity>
         </View>
       </View>
