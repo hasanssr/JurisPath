@@ -125,18 +125,7 @@ export function AuthProvider({ children }) {
         },
       });
 
-      if (error) throw error;
-
-      // Show redirect URL directly on the phone screen so the user can see it
-      await new Promise((resolve) => {
-        Alert.alert(
-          "Yönlendirme Adresi (Redirect URL)",
-          `Supabase panelinde "Redirect URLs" kısmına eklemeniz gereken adres:\n\n${redirectUrl}\n\n(Bu adresi eklemezseniz Google girişi başarısız olur.)`,
-          [{ text: "Devam Et", onPress: resolve }]
-        );
-      });
-
-      // Open the OAuth URL in the browser
+      // Open the OAuth URL in the browser directly and cleanly
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectUrl

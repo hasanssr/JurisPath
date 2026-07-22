@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Share, Animated, Alert, Dimensions, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,274 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
+import * as Clipboard from 'expo-clipboard';
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
+import { API_BASE_URL } from '../constants/config';
+
+const DISCLAIMER_TEXT = "Bu belge bilgi amaçlı örnek dilekçedir, hukuki tavsiye niteliği taşımaz.";
+
+const SelectableText = ({ text, style, selectionColor = '#0084FF' }) => {
+  return (
+    <TextInput
+      editable={false}
+      multiline={true}
+      scrollEnabled={false}
+      selectionColor={selectionColor}
+      style={[
+        style,
+        {
+          padding: 0,
+          margin: 0,
+          textAlignVertical: 'top',
+          backgroundColor: 'transparent',
+        }
+      ]}
+      value={String(text || '')}
+    />
+  );
+};
+
+const sanitizeHeaderLocation = (headerStr) => {
+  if (!headerStr) return headerStr;
+  let str = headerStr;
+  const citiesPattern = /\b(ANKARA|İSTANBUL|IZMIR|İZMİR|BURSA|ADANA|ANTALYA|KONYA|GAZİANTEP|KOCAELİ|MERSİN|DİYARBAKIR|KAYSERİ|ESKİŞEHİR|SAMSUN|DENİZLİ|ŞANLIURFA|MALATYA|TRABZON|ERZURUM)\b\s*/gi;
+  str = str.replace(citiesPattern, '... ');
+  return str;
+};
+
+const generatePetitionHTML = (draft) => {
+  if (!draft) return '';
+  const title = draft.title || 'DİLEKÇE TASLAĞI';
+  let rawText = draft.previewText || draft.text || '';
+  
+  if (!rawText.includes(DISCLAIMER_TEXT)) {
+    rawText = rawText.trim() + "\n\n" + DISCLAIMER_TEXT;
+  }
+
+  const paragraphs = rawText
+    .split('\n')
+    .filter(p => p.trim() !== '')
+    .map(p => {
+      const trimmed = p.trim();
+      const upper = trimmed.toUpperCase();
+
+      if (trimmed.includes("Bu belge bilgi amaçlı örnek dilekçedir") || trimmed === DISCLAIMER_TEXT) {
+        return `<div class="doc-disclaimer">* ${DISCLAIMER_TEXT}</div>`;
+      }
+
+      if (
+        upper.startsWith('T.C.') || 
+        upper.includes('MAHKEMESİNE') || 
+        upper.includes('HÂKİMLİĞİ') || 
+        upper.includes('HAKİMLİĞİ') || 
+        upper.includes('İHTARNAME') ||
+        upper.includes('BAŞKANLIĞINA') ||
+        upper.includes('BAŞSAVCILIĞINA')
+      ) {
+        const cleanHeader = sanitizeHeaderLocation(trimmed);
+        return `<div class="doc-header">${cleanHeader}</div>`;
+      }
+
+      if (
+        upper.startsWith('DAVACI:') || 
+        upper.startsWith('DAVALI:') || 
+        upper.startsWith('İHTAR EDEN:') || 
+        upper.startsWith('MUHATAP:') || 
+        upper.startsWith('KONU:') || 
+        upper.startsWith('TARİH:') || 
+        upper.startsWith('AÇIKLAMALAR:') || 
+        upper.startsWith('HUKUKİ NEDENLER:') || 
+        upper.startsWith('HUKUKİ DELİLLER:') || 
+        upper.startsWith('SONUÇ VE İSTEM:')
+      ) {
+        const parts = trimmed.split(':');
+        const label = parts[0];
+        const val = parts.slice(1).join(':');
+        return `<div class="field-row"><span class="field-label">${label}:</span><span>${val}</span></div>`;
+      }
+
+      return `<p class="content-p">${trimmed}</p>`;
+    })
+    .join('');
+
+  return `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 25mm 20mm 20mm 20mm;
+    }
+    body {
+      font-family: "Times New Roman", Times, Georgia, serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #000000;
+      background-color: #ffffff;
+      padding: 10px;
+    }
+    .doc-header {
+      text-align: center;
+      font-weight: bold;
+      font-size: 13pt;
+      text-transform: uppercase;
+      margin-top: 15px;
+      margin-bottom: 25px;
+      line-height: 1.4;
+    }
+    .field-row {
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .field-label {
+      font-weight: bold;
+      display: inline-block;
+      min-width: 150px;
+    }
+    .content-p {
+      text-align: justify;
+      text-indent: 30px;
+      margin-top: 0;
+      margin-bottom: 12px;
+      word-break: break-word;
+    }
+    .doc-footer {
+      margin-top: 40px;
+      page-break-inside: avoid;
+    }
+    .signature-box {
+      float: right;
+      text-align: center;
+      min-width: 200px;
+    }
+    .signature-title {
+      font-weight: bold;
+      margin-bottom: 50px;
+    }
+    .doc-disclaimer {
+      margin-top: 30px;
+      font-style: italic;
+      font-size: 9.5pt;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 12px;
+    }
+    .clear {
+      clear: both;
+    }
+  </style>
+</head>
+<body>
+  <div class="doc-container">
+    ${paragraphs}
+    <div class="doc-footer">
+      <div class="signature-box">
+        <div class="signature-title">Tarih / İmza</div>
+        <div>...................................</div>
+      </div>
+      <div class="clear"></div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+};
+
+const getCleanFilename = (draft) => {
+  const raw = draft?.title || draft?.type || 'hukuki_dava';
+  
+  const trMap = {
+    'Ç': 'C', 'ç': 'c', 'Ğ': 'G', 'ğ': 'g', 'İ': 'I', 'ı': 'i',
+    'Ö': 'O', 'ö': 'o', 'Ş': 'S', 'ş': 's', 'Ü': 'U', 'ü': 'u'
+  };
+  
+  const asciiStr = raw.replace(/[ÇçĞğİıÖöŞşÜü]/g, match => trMap[match] || match);
+  
+  let cleaned = asciiStr
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .toLowerCase();
+
+  cleaned = cleaned.replace(/^[0-9_]+/, '');
+  
+  if (!cleaned || cleaned.length < 3) {
+    cleaned = 'hukuki_dava';
+  }
+
+  return `${cleaned.substring(0, 35)}_ornekdilekce.pdf`;
+};
+
+const handleExportPDF = async (draft) => {
+  if (!draft) {
+    Alert.alert("Hata", "Taslak belge verisi bulunamadı.");
+    return;
+  }
+  try {
+    const htmlContent = generatePetitionHTML(draft);
+    
+    // 1. Render HTML to temporary PDF
+    const printResult = await Print.printToFileAsync({
+      html: htmlContent,
+    });
+
+    if (!printResult || !printResult.uri) {
+      throw new Error("PDF dosyası oluşturulamadı.");
+    }
+
+    let fileToShare = printResult.uri;
+
+    // 2. Safely attempt to copy to DocumentDirectory with clean <dava_adi>_ornekdilekce.pdf extension
+    try {
+      if (FileSystem && FileSystem.documentDirectory) {
+        const filename = getCleanFilename(draft);
+        const targetUri = `${FileSystem.documentDirectory}${filename}`;
+
+        // Ensure existing file with same name is deleted before copying
+        try {
+          const info = await FileSystem.getInfoAsync(targetUri);
+          if (info.exists) {
+            await FileSystem.deleteAsync(targetUri, { idempotent: true });
+          }
+        } catch (e) {
+          console.warn("deleteAsync error:", e);
+        }
+
+        await FileSystem.copyAsync({
+          from: printResult.uri,
+          to: targetUri,
+        });
+        fileToShare = targetUri;
+      }
+    } catch (copyErr) {
+      console.warn("Copy to documentDirectory failed, falling back to temp file:", copyErr);
+      fileToShare = printResult.uri;
+    }
+
+    // 3. Share / Save to Files
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(fileToShare, {
+        UTI: 'com.adobe.pdf',
+        mimeType: 'application/pdf',
+        dialogTitle: `${draft.title || 'Dilekçe'} - PDF İndir / Paylaş`
+      });
+    } else {
+      Alert.alert("Başarılı", `PDF dosyası oluşturuldu:\n${fileToShare}`);
+    }
+  } catch (err) {
+    console.error("PDF Export Error:", err);
+    Alert.alert("PDF Hatası", `PDF oluşturulurken bir sorun meydana geldi: ${err?.message || 'Bilinmeyen hata'}`);
+  }
+};
 
 // ─── ANIMATED MESSAGE WRAPPER ─────────────────────────────
 function AnimatedMessage({ children, isUser }) {
@@ -48,33 +316,82 @@ function generateTitleFromQuery(query) {
     return 'Ev Sahibi & Kiracı Uyuşmazlığı';
   }
   if (lower.includes('işten') || lower.includes('ihbar') || lower.includes('kıdem') || lower.includes('patron') || lower.includes('maaş') || lower.includes('işçi') || lower.includes('mesai')) {
-    return 'İşçi Hakları & Tazminat Süreci';
-  }
-  if (lower.includes('iade') || lower.includes('kusurlu') || lower.includes('ayıplı') || lower.includes('cayma') || lower.includes('hakem heyeti') || lower.includes('satıcı')) {
-    return 'Ayıplı Ürün & Tüketici Hakları';
-  }
-  if (lower.includes('boşanma') || lower.includes('nafaka') || lower.includes('velayet') || lower.includes('miras') || lower.includes('vasiyet')) {
-    return 'Aile & Miras Hukuku Danışması';
-  }
-  if (lower.includes('trafik') || lower.includes('kaza') || lower.includes('sigorta') || lower.includes('hasar')) {
-    return 'Trafik Kazası & Sigorta Tazminatı';
-  }
-  if (lower.includes('hakaret') || lower.includes('tehdit') || lower.includes('şikayet') || lower.includes('savcılık') || lower.includes('ceza')) {
-    return 'Ceza Hukuku & Şikayet Süreci';
+    return 'İş Hukuku & Tazminat Analizi';
   }
   const words = query.trim().split(/\s+/);
   const short = words.slice(0, 4).join(' ');
   return short.charAt(0).toUpperCase() + short.slice(1) + (words.length > 4 ? '...' : '');
 }
 
+const formatArticleName = (raw) => {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  const isGecici = /geçici|gecici/i.test(str);
+  const isEk = /ek\s*madde/i.test(str);
+  const numbers = str.match(/\d+[a-zA-Z]?/g);
+  if (numbers && numbers.length > 0) {
+    const num = numbers[0];
+    if (isGecici) return `Geçici Madde ${num}`;
+    if (isEk) return `Ek Madde ${num}`;
+    return `Madde ${num}`;
+  }
+  return str.replace(/^(madde\s*)+/i, 'Madde ').trim();
+};
+
 const { width: screenWidth } = Dimensions.get('window');
 const DRAWER_WIDTH = screenWidth * 0.78;
 
 export default function AIScreen({ route, navigation }) {
   const { credits, updateCredits, refreshCredits, session } = useAuth();
+
+  const handleCopyUserMessage = async (text) => {
+    try {
+      await Clipboard.setStringAsync(text || '');
+      Alert.alert("Kopyalandı", "Soru metni panoya kopyalandı.");
+    } catch (e) {
+      console.warn("Copy error:", e);
+    }
+  };
+
+  const handleDownloadPetitionWithCredits = async (draft) => {
+    if (!draft) return;
+
+    if (credits < 10) {
+      Alert.alert(
+        "Yetersiz Kredi",
+        `Dilekçeyi indirebilmek için en az 10 krediniz olması gerekmektedir.\n\nMevcut Krediniz: ${credits} Kredi\nGereken Kredi: 10 Kredi\n\nLütfen paketler sekmesinden kredi yükleyin.`,
+        [
+          { text: "Vazgeç", style: "cancel" },
+          { text: "Kredi Yükle", onPress: () => navigation.navigate('PlansTab') }
+        ]
+      );
+      return;
+    }
+
+    try {
+      const newCredits = Math.max(0, credits - 10);
+      await updateCredits(newCredits);
+      await refreshCredits();
+      await handleExportPDF(draft);
+    } catch (err) {
+      console.error("Dilekçe indirme hatası:", err);
+      Alert.alert("Hata", "Kredi işleminde veya dosya indirmede sorun oluştu.");
+    }
+  };
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+
+  const handleSaveAndResubmitEdit = async (msgId, newText) => {
+    if (!newText || !newText.trim()) return;
+    const editedQuery = newText.trim();
+    setEditingMessageId(null);
+    setEditingText('');
+
+    await sendMessage(editedQuery);
+  };
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [conversationsList, setConversationsList] = useState([]);
@@ -83,6 +400,7 @@ export default function AIScreen({ route, navigation }) {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [selectedFile, setSelectedFile] = useState(null);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
@@ -170,6 +488,84 @@ export default function AIScreen({ route, navigation }) {
       hideSub.remove();
     };
   }, []);
+
+  // ── Load Chat History Per User ──────────────────────
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      try {
+        const userId = session?.user?.id || 'guest';
+        const key = `jurispath_conversations_${userId}`;
+        const saved = await AsyncStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setConversationsList(parsed);
+            const latest = parsed[0];
+            if (latest && latest.messages && latest.messages.length > 0) {
+              setCurrentConvId(latest.id);
+              setMessages(latest.messages);
+            }
+          } else {
+            setConversationsList([]);
+            setMessages([]);
+            setCurrentConvId(null);
+          }
+        } else {
+          setConversationsList([]);
+          setMessages([]);
+          setCurrentConvId(null);
+        }
+      } catch (err) {
+        console.warn('Chat history load error:', err);
+      }
+    };
+
+    loadChatHistory();
+  }, [session?.user?.id]);
+
+  // ── Auto Save Conversations to Storage ─────────────
+  useEffect(() => {
+    if (conversationsList && conversationsList.length > 0) {
+      const userId = session?.user?.id || 'guest';
+      const key = `jurispath_conversations_${userId}`;
+      AsyncStorage.setItem(key, JSON.stringify(conversationsList)).catch(err => {
+        console.warn('Chat history save error:', err);
+      });
+    }
+  }, [conversationsList, session?.user?.id]);
+
+  // ── Delete Conversation ────────────────────────────
+  const deleteConversation = (convId) => {
+    Alert.alert(
+      "Sohbeti Sil",
+      "Bu sohbeti geçmişinizden silmek istediğinize emin misiniz?",
+      [
+        { text: "Vazgeç", style: "cancel" },
+        {
+          text: "Sil",
+          style: "destructive",
+          onPress: async () => {
+            const updatedList = conversationsList.filter(c => c.id !== convId);
+            setConversationsList(updatedList);
+            
+            const userId = session?.user?.id || 'guest';
+            const key = `jurispath_conversations_${userId}`;
+            await AsyncStorage.setItem(key, JSON.stringify(updatedList));
+
+            if (currentConvId === convId) {
+              if (updatedList.length > 0) {
+                setCurrentConvId(updatedList[0].id);
+                setMessages(updatedList[0].messages || []);
+              } else {
+                setCurrentConvId(null);
+                setMessages([]);
+              }
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const openDrawer = () => {
     setDrawerOpen(true);
@@ -262,7 +658,7 @@ export default function AIScreen({ route, navigation }) {
         });
       }
 
-      const response = await fetch('http://192.168.1.104:8000/analyze', {
+      const response = await fetch(`${API_BASE_URL}/analyze`, {
         method: 'POST',
         headers,
         body: formData,
@@ -312,15 +708,15 @@ export default function AIScreen({ route, navigation }) {
         type: 'ai',
         data: {
           confidence: 0,
-          shortAnswer: 'Üzgünüm, şu anda sunucuya bağlanılamıyor. Lütfen backend sunucunuzun çalıştığından emin olun ve tekrar deneyin.',
-          plainExplanation: `Hata detayı: ${error.message || 'Bilinmeyen hata'}. Backend sunucunuzu "uvicorn main:app --host 0.0.0.0 --port 8000" komutuyla başlatın.`,
+          shortAnswer: 'Şu anda sistemlerimizde kısa süreli bir yoğunluk veya geçici bir aksaklık yaşanmaktadır. Lütfen biraz sonra tekrar deneyiniz.',
+          plainExplanation: '',
           rights: [],
           laws: [],
           decisions: [],
           requiredDocs: [],
           steps: [],
           generatedDocs: [],
-          warnings: ['Backend sunucusu çalışmıyor veya erişilemiyor.'],
+          warnings: [],
           followUps: []
         },
         question: queryText
@@ -347,8 +743,50 @@ export default function AIScreen({ route, navigation }) {
 
   React.useEffect(() => {
     if (route.params?.initialQuery) {
-      sendMessage(route.params.initialQuery);
+      const topic = route.params.initialQuery;
       navigation.setParams({ initialQuery: undefined });
+
+      // Create a NEW conversation session for this category card click
+      const newConvId = Date.now().toString();
+      setCurrentConvId(newConvId);
+
+      const freeGuideMessage = {
+        id: Date.now().toString(),
+        type: 'ai',
+        isFreeGuide: true,
+        data: {
+          confidence: 100,
+          shortAnswer: `Merhaba! "${topic}" konusuyla ilgili size yardımcı olmaktan memnuniyet duyarım.`,
+          plainExplanation: `Bu başlık altında haklarınızı öğrenebilir, dilekçe oluşturabilir ve izlemeniz gereken hukuki süreç hakkında detaylı bilgi alabilirsiniz.\n\nLütfen sorunuzu veya yaşadığınız durumu aşağıdaki mesaj kutusuna yazarak gönderin.`,
+          rights: [],
+          laws: [],
+          decisions: [],
+          requiredDocs: [],
+          steps: [],
+          generatedDocs: [],
+          warnings: [],
+          followUps: [
+            `${topic} sürecinde haklarım nelerdir?`,
+            `${topic} davası veya başvurusu için izlenecek adımlar nelerdir?`
+          ]
+        },
+        question: topic
+      };
+
+      // Start new clean chat with this guide message
+      setMessages([freeGuideMessage]);
+
+      const newConvItem = {
+        id: newConvId,
+        title: topic,
+        preview: `Rehber: ${topic}`,
+        date: 'Bugün',
+        messageCount: 1,
+        messages: [freeGuideMessage]
+      };
+      setConversationsList(prev => [newConvItem, ...prev]);
+
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
     }
   }, [route.params?.initialQuery]);
 
@@ -366,187 +804,251 @@ export default function AIScreen({ route, navigation }) {
     }
   };
 
-  const renderAIResponse = (msg) => (
-    <View style={styles.aiResponse}>
-      {/* AI Confidence Meter */}
-      <View style={styles.confidenceSection}>
-        <ConfidenceMeter score={msg.data.confidence} label="AI Güven Skoru" />
-      </View>
+  const renderAIResponse = (msg) => {
+    if (!msg || !msg.data) return null;
 
-      {/* 1. Kısa Cevap */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="check-circle" size={16} color={colors.teal[600]} />
-          <Text style={styles.sectionTitleCustom}>1. Kısa Cevap</Text>
-        </View>
-        <View style={styles.shortAnswerBox}>
-          <Text style={styles.shortAnswerText}>{msg.data.shortAnswer}</Text>
-        </View>
-      </View>
+    const data = msg.data;
+    const rights = data.rights || [];
+    const laws = data.laws || [];
+    const requiredDocs = data.requiredDocs || [];
+    const steps = data.steps || [];
+    const generatedDocs = data.generatedDocs || [];
+    const warnings = data.warnings || [];
+    const followUps = data.followUps || [];
 
-      {/* 2. Sade Dille Açıklama */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="message-square" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>2. Sade Dille Açıklama</Text>
-        </View>
-        <Text style={styles.plainText}>{msg.data.plainExplanation}</Text>
-      </View>
+    const isShortAnswerOnly = 
+      msg.isFreeGuide || 
+      (
+        rights.length === 0 &&
+        laws.length === 0 &&
+        steps.length === 0 &&
+        generatedDocs.length === 0 &&
+        requiredDocs.length === 0
+      );
 
-      {/* 3. Yasal Haklarınız */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="shield" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>3. Yasal Haklarınız</Text>
-        </View>
-        {msg.data.rights.map((right, i) => (
-          <View key={i} style={styles.rightItem}>
-            <View style={styles.rightCheckCircle}>
-              <Feather name="check" size={11} color={colors.teal[700]} />
+    if (isShortAnswerOnly) {
+      return (
+        <View style={styles.aiResponse}>
+          {/* 1. Kısa Cevap */}
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="check-circle" size={16} color={colors.teal[600]} />
+              <Text style={styles.sectionTitleCustom}>Cevap</Text>
             </View>
-            <Text style={styles.rightText}>{right}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* 4. İlgili Kanunlar */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="book" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>4. İlgili Kanunlar</Text>
-        </View>
-        {msg.data.laws.map((law, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.lawRefCustom}
-            onPress={() => navigation.navigate('LawDetail', { law: { number: law.article.replace(/\D/g, ''), title: law.code, category: law.code } })}
-          >
-            <View style={styles.lawRefLeft}>
-              <Text style={styles.lawRefCode}>{law.code} · {law.article}</Text>
-              <Text style={styles.lawRefTitle}>{law.title}</Text>
+            <View style={styles.shortAnswerBox}>
+              <Text style={styles.shortAnswerText} selectable={true} selectionColor="rgba(0, 132, 255, 0.35)">{data.shortAnswer || ''}</Text>
             </View>
-            <Feather name="chevron-right" size={16} color={colors.gray[300]} />
-          </TouchableOpacity>
-        ))}
-      </View>
+          </View>
 
-      {/* 5. Emsal Kararlar */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="folder" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>5. Emsal Kararlar</Text>
-        </View>
-        {msg.data.decisions.map((d, i) => (
-          <View key={i} style={styles.decisionCardCustom}>
-            <View style={styles.decisionHeader}>
-              <Text style={styles.decisionCourtCustom}>{d.court}</Text>
-              <Badge label={d.no} variant="primary" size="sm" />
+          {/* 2. Açıklama (Var ise) */}
+          {!!data.plainExplanation && (
+            <View style={styles.aiSection}>
+              <Text style={styles.plainText} selectable={true} selectionColor="rgba(0, 132, 255, 0.35)">{data.plainExplanation}</Text>
             </View>
-            <Text style={styles.decisionSummaryCustom}>{d.summary}</Text>
-          </View>
-        ))}
-      </View>
+          )}
 
-      {/* 6. Gerekli Belgeler */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="file-text" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>6. Gerekli Belgeler</Text>
+          {/* 3. Önerilen Takip Soruları (Var ise) */}
+          {followUps.length > 0 && (
+            <View style={[styles.aiSection, { borderBottomWidth: 0 }]}>
+              {followUps.map((q, i) => (
+                <TouchableOpacity key={i} style={styles.followUp} onPress={() => handleFollowUp(q)}>
+                  <Feather name="corner-down-right" size={12} color={colors.teal[600]} />
+                  <Text style={styles.followUpText} selectable={true}>{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
-        {msg.data.requiredDocs.map((doc, i) => (
-          <View key={i} style={styles.docCheckItem}>
-            <Feather name="square" size={14} color={colors.gray[400]} style={{ marginRight: spacing[2] }} />
-            <Text style={styles.docCheckText}>{doc}</Text>
-          </View>
-        ))}
-      </View>
+      );
+    }
 
-      {/* 7. Önerilen Adımlar (Yol Haritası) */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="compass" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>7. Yol Haritası (Yasal Süreç)</Text>
+    return (
+      <View style={styles.aiResponse}>
+        {/* AI Confidence Meter */}
+        <View style={styles.confidenceSection}>
+          <ConfidenceMeter score={data.confidence || 90} label="AI Güven Skoru" />
         </View>
-        <View style={styles.journeyContainer}>
-          {msg.data.steps.map((step, index) => (
-            <View key={index} style={styles.journeyStep}>
-              <View style={styles.journeyLeft}>
-                <View style={[styles.journeyDot, index === 0 && styles.journeyDotActive]}>
-                  <Text style={[styles.journeyDotText, index === 0 && styles.journeyDotTextActive]}>{step.stepNum}</Text>
+
+        {/* 1. Kısa Cevap */}
+        {!!data.shortAnswer && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="check-circle" size={16} color={colors.teal[600]} />
+              <Text style={styles.sectionTitleCustom}>1. Kısa Cevap</Text>
+            </View>
+            <View style={styles.shortAnswerBox}>
+              <Text style={styles.shortAnswerText} selectable={true} selectionColor="rgba(0, 132, 255, 0.35)">{data.shortAnswer}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 2. Sade Dille Açıklama */}
+        {!!data.plainExplanation && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="message-square" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>2. Sade Dille Açıklama</Text>
+            </View>
+            <Text style={styles.plainText} selectable={true} selectionColor="rgba(0, 132, 255, 0.35)">{data.plainExplanation}</Text>
+          </View>
+        )}
+
+        {/* 3. Yasal Haklarınız */}
+        {rights.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="shield" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>3. Yasal Haklarınız</Text>
+            </View>
+            {rights.map((right, i) => (
+              <View key={i} style={styles.rightItem}>
+                <View style={styles.rightCheckCircle}>
+                  <Feather name="check" size={11} color={colors.teal[700]} />
                 </View>
-                {index < msg.data.steps.length - 1 && <View style={styles.journeyLine} />}
+                <Text style={styles.rightText} selectable={true}>{right}</Text>
               </View>
-              <View style={styles.journeyContent}>
-                <Text style={styles.journeyStepTitle}>{step.title}</Text>
-                <Text style={styles.journeyStepDesc}>{step.desc}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* 8. AI Belge Taslakları */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="cpu" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>8. AI Dilekçe & İhtarname Taslakları</Text>
-        </View>
-        <Text style={styles.draftSectionIntro}>AI sizin durumunuza uygun taslak belgeler hazırladı. İncelemek veya paylaşmak için tıklayın:</Text>
-        {msg.data.generatedDocs.map((doc, idx) => (
-          <TouchableOpacity key={idx} style={styles.docDraftCard} onPress={() => setSelectedDraft(doc)}>
-            <View style={styles.docDraftIcon}>
-              <Feather name="file-text" size={16} color={colors.teal[600]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.docDraftTitle}>{doc.title}</Text>
-              <Text style={styles.docDraftType}>{doc.type}</Text>
-            </View>
-            <Badge label="Aç" variant="teal" size="sm" />
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* 9. Önemli Uyarılar */}
-      <View style={styles.aiSection}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="alert-triangle" size={16} color={colors.error[600]} />
-          <Text style={[styles.sectionTitleCustom, { color: colors.error[600] }]}>9. Önemli Uyarılar & Süreler</Text>
-        </View>
-        {msg.data.warnings.map((warn, i) => (
-          <View key={i} style={styles.warningItemCustom}>
-            <View style={styles.warningDotCustom} />
-            <Text style={styles.warningTextCustom}>{warn}</Text>
+            ))}
           </View>
-        ))}
-      </View>
+        )}
 
-      {/* 10. İlgili Konular */}
-      <View style={[styles.aiSection, { borderBottomWidth: 0 }]}>
-        <View style={styles.sectionHeaderCustom}>
-          <Feather name="corner-down-right" size={16} color={colors.navy[700]} />
-          <Text style={styles.sectionTitleCustom}>10. İlgili Konular</Text>
-        </View>
-        {msg.data.followUps.map((q, i) => (
-          <TouchableOpacity key={i} style={styles.followUp} onPress={() => handleFollowUp(q)}>
-            <Feather name="corner-down-right" size={12} color={colors.teal[600]} />
-            <Text style={styles.followUpText}>{q}</Text>
+        {/* 4. İlgili Kanunlar */}
+        {laws.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="book" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>4. İlgili Kanunlar</Text>
+            </View>
+            {laws.map((law, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.lawRefCustom}
+                onPress={() => navigation.navigate('LawDetail', { law: { number: law.article, title: law.code, category: law.code, content: law.content, articleTitle: law.title } })}
+              >
+                <View style={styles.lawRefLeft}>
+                  <Text style={styles.lawRefCode} selectable={true}>{law.code} · {formatArticleName(law.article)}</Text>
+                  <Text style={styles.lawRefTitle} selectable={true}>{law.title}</Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={colors.gray[300]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* 5. Gerekli Belgeler */}
+        {requiredDocs.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="file-text" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>5. Gerekli Belgeler</Text>
+            </View>
+            {requiredDocs.map((doc, i) => (
+              <View key={i} style={styles.docCheckItem}>
+                <Feather name="square" size={14} color={colors.gray[400]} style={{ marginRight: spacing[2] }} />
+                <Text style={styles.docCheckText} selectable={true}>{doc}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 6. Yol Haritası (Yasal Süreç) */}
+        {steps.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="compass" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>6. Yol Haritası (Yasal Süreç)</Text>
+            </View>
+            <View style={styles.journeyContainer}>
+              {steps.map((step, index) => (
+                <View key={index} style={styles.journeyStep}>
+                  <View style={styles.journeyLeft}>
+                    <View style={[styles.journeyDot, index === 0 && styles.journeyDotActive]}>
+                      <Text style={[styles.journeyDotText, index === 0 && styles.journeyDotTextActive]}>{step.stepNum}</Text>
+                    </View>
+                    {index < steps.length - 1 && <View style={styles.journeyLine} />}
+                  </View>
+                  <View style={styles.journeyContent}>
+                    <Text style={styles.journeyStepTitle} selectable={true}>{step.title}</Text>
+                    <Text style={styles.journeyStepDesc} selectable={true}>{step.desc}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* 7. AI Belge Taslakları */}
+        {generatedDocs.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="cpu" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>7. AI Dilekçe & İhtarname Taslakları</Text>
+            </View>
+            <Text style={styles.draftSectionIntro} selectable={true}>AI durumunuza özel resmi örnek dilekçe hazırladı. İndirmek için butona tıklayın (10 Kredi):</Text>
+            {generatedDocs.map((doc, idx) => (
+              <TouchableOpacity key={idx} style={styles.docDraftCard} onPress={() => handleDownloadPetitionWithCredits(doc)}>
+                <View style={styles.docDraftIcon}>
+                  <Feather name="file-text" size={18} color={colors.teal[600]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.docDraftTitle} selectable={true}>Örnek Dilekçe</Text>
+                  <Text style={styles.docDraftType} selectable={true}>{doc.title || doc.type}</Text>
+                </View>
+                <View style={styles.downloadBtnBadge}>
+                  <Text style={styles.downloadBtnBadgeText}>İNDİR</Text>
+                  <Feather name="zap" size={12} color="#fcf003" style={{ marginLeft: 4, marginRight: 2 }} />
+                  <Text style={styles.downloadBtnBadgeCredit}>10</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* 8. Önemli Uyarılar */}
+        {warnings.length > 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="alert-triangle" size={16} color={colors.error[600]} />
+              <Text style={[styles.sectionTitleCustom, { color: colors.error[600] }]}>8. Önemli Uyarılar & Süreler</Text>
+            </View>
+            {warnings.map((warn, i) => (
+              <View key={i} style={styles.warningItemCustom}>
+                <View style={styles.warningDotCustom} />
+                <Text style={styles.warningTextCustom} selectable={true}>{warn}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* 9. İlgili Konular */}
+        {followUps.length > 0 && (
+          <View style={[styles.aiSection, { borderBottomWidth: 0 }]}>
+            <View style={styles.sectionHeaderCustom}>
+              <Feather name="corner-down-right" size={16} color={colors.navy[700]} />
+              <Text style={styles.sectionTitleCustom}>9. İlgili Konular</Text>
+            </View>
+            {followUps.map((q, i) => (
+              <TouchableOpacity key={i} style={styles.followUp} onPress={() => handleFollowUp(q)}>
+                <Feather name="corner-down-right" size={12} color={colors.teal[600]} />
+                <Text style={styles.followUpText} selectable={true}>{q}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Basic Actions */}
+        <View style={styles.aiActions}>
+          <TouchableOpacity style={styles.aiActionBtn}>
+            <Feather name="bookmark" size={14} color={colors.gray[500]} />
+            <Text style={styles.aiActionText}>Kaydet</Text>
           </TouchableOpacity>
-        ))}
+          <TouchableOpacity style={styles.aiActionBtn}>
+            <Feather name="share" size={14} color={colors.gray[500]} />
+            <Text style={styles.aiActionText}>Paylaş</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      {/* Basic Actions */}
-      <View style={styles.aiActions}>
-        <TouchableOpacity style={styles.aiActionBtn}>
-          <Feather name="bookmark" size={14} color={colors.gray[500]} />
-          <Text style={styles.aiActionText}>Kaydet</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.aiActionBtn}>
-          <Feather name="share" size={14} color={colors.gray[500]} />
-          <Text style={styles.aiActionText}>Paylaş</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -579,21 +1081,83 @@ export default function AIScreen({ route, navigation }) {
 
           {messages.map((msg) => (
             <AnimatedMessage key={msg.id} isUser={msg.type === 'user'}>
-              <View style={msg.type === 'user' ? styles.userBubble : styles.aiBubble}>
-                {msg.type === 'user' ? (
-                  <View>
-                    {msg.file && (
-                      <View style={styles.bubbleAttachment}>
-                        <Feather name={msg.file.type === 'image' ? 'image' : 'file-text'} size={14} color="#ffffff" style={{ marginRight: 6 }} />
-                        <Text style={styles.bubbleAttachmentText} numberOfLines={1}>{msg.file.name}</Text>
+              {msg.type === 'user' ? (
+                <View style={styles.userBubbleContainer}>
+                  {editingMessageId === msg.id ? (
+                    <View style={styles.inlineEditContainer}>
+                      <TextInput
+                        style={styles.inlineEditInput}
+                        value={editingText}
+                        onChangeText={setEditingText}
+                        multiline={true}
+                        autoFocus={true}
+                        selectionColor="#38bdf8"
+                        placeholder="Sorunuzu düzenleyin..."
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <View style={styles.inlineEditActions}>
+                        <TouchableOpacity 
+                          style={styles.inlineCancelBtn} 
+                          onPress={() => {
+                            setEditingMessageId(null);
+                            setEditingText('');
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.inlineCancelText}>Vazgeç</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={styles.inlineSubmitBtn} 
+                          onPress={() => handleSaveAndResubmitEdit(msg.id, editingText)}
+                          activeOpacity={0.8}
+                        >
+                          <Feather name="send" size={11} color="#ffffff" style={{ marginRight: 4 }} />
+                          <Text style={styles.inlineSubmitText}>Tekrar Sor</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
-                    <Text style={styles.userText}>{msg.text}</Text>
-                  </View>
-                ) : (
-                  renderAIResponse(msg)
-                )}
-              </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.userBubble}>
+                        {msg.file && (
+                          <View style={styles.bubbleAttachment}>
+                            <Feather name={msg.file.type === 'image' ? 'image' : 'file-text'} size={14} color="#ffffff" style={{ marginRight: 6 }} />
+                            <Text style={styles.bubbleAttachmentText} numberOfLines={1}>{msg.file.name}</Text>
+                          </View>
+                        )}
+                        <SelectableText text={msg.text} style={styles.userText} selectionColor="#38bdf8" />
+                      </View>
+                      <View style={styles.userMessageActions}>
+                        <TouchableOpacity 
+                          style={styles.iconActionBtn} 
+                          onPress={() => {
+                            setEditingMessageId(msg.id);
+                            setEditingText(msg.text);
+                          }}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="edit-3" size={13} color="#64748b" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          style={styles.iconActionBtn} 
+                          onPress={() => handleCopyUserMessage(msg.text)}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="copy" size={13} color="#64748b" />
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.aiBubble}>
+                  {renderAIResponse(msg)}
+                </View>
+              )}
             </AnimatedMessage>
           ))}
 
@@ -635,6 +1199,7 @@ export default function AIScreen({ route, navigation }) {
               <Feather name="plus" size={20} color="#0084FF" />
             </TouchableOpacity>
             <TextInput
+              ref={inputRef}
               style={styles.input}
               placeholder="Hukuki sorununuzu yazın..."
               placeholderTextColor="#859cb5"
@@ -689,64 +1254,52 @@ export default function AIScreen({ route, navigation }) {
                 </LinearGradient>
               </TouchableOpacity>
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing[4], paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
-                {conversationsList.map((conv) => (
-                  <TouchableOpacity
-                    key={conv.id}
-                    style={styles.drawerItem}
-                    onPress={() => {
-                      setCurrentConvId(conv.id);
-                      if (conv.messages && conv.messages.length > 0) {
-                        setMessages(conv.messages);
-                      } else {
-                        const mockUserMsg = { id: 'm1-' + conv.id, type: 'user', text: conv.preview || conv.title };
-                        setMessages([mockUserMsg]);
-                      }
-                      closeDrawer();
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.drawerItemIcon}>
-                      <Feather name="message-circle" size={16} color="#0084FF" />
+                {conversationsList.map((conv) => {
+                  const isActive = currentConvId === conv.id;
+                  return (
+                    <View key={conv.id} style={[styles.drawerItemRow, isActive && styles.drawerItemRowActive]}>
+                      <TouchableOpacity
+                        style={styles.drawerItem}
+                        onPress={() => {
+                          setCurrentConvId(conv.id);
+                          if (conv.messages && conv.messages.length > 0) {
+                            setMessages(conv.messages);
+                          } else {
+                            const mockUserMsg = { id: 'm1-' + conv.id, type: 'user', text: conv.preview || conv.title };
+                            setMessages([mockUserMsg]);
+                          }
+                          closeDrawer();
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.drawerItemIcon, isActive && styles.drawerItemIconActive]}>
+                          <Feather name="message-circle" size={16} color={isActive ? '#0084FF' : '#64748b'} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.drawerItemTitle, isActive && styles.drawerItemTitleActive]} numberOfLines={1}>
+                            {conv.title}
+                          </Text>
+                          <Text style={styles.drawerItemMeta}>{conv.date} · {conv.messageCount} mesaj</Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.drawerDeleteBtn}
+                        onPress={() => deleteConversation(conv.id)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Feather name="trash-2" size={15} color="#94a3b8" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.drawerItemTitle} numberOfLines={1}>{conv.title}</Text>
-                      <Text style={styles.drawerItemMeta}>{conv.date} · {conv.messageCount} mesaj</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                  );
+                })}
               </ScrollView>
             </SafeAreaView>
           </Animated.View>
         </Animated.View>
       )}
 
-      {/* Document Draft Preview Modal */}
-      {selectedDraft && (
-        <Modal animationType="slide" transparent={true} visible={!!selectedDraft} onRequestClose={() => setSelectedDraft(null)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalTitle} numberOfLines={1}>{selectedDraft.title}</Text>
-                  <Text style={styles.modalSub}>{selectedDraft.type}</Text>
-                </View>
-                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedDraft(null)}>
-                  <Feather name="x" size={20} color={colors.text.primary} />
-                </TouchableOpacity>
-              </View>
 
-              <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={true}>
-                <Text style={styles.modalDocText}>{selectedDraft.previewText}</Text>
-              </ScrollView>
-
-              <View style={styles.modalFooter}>
-                <Button label="Kapat" onPress={() => setSelectedDraft(null)} variant="secondary" style={{ flex: 1 }} />
-                <Button label="Paylaş / Gönder" onPress={() => handleShareDraft(selectedDraft)} variant="primary" icon="share-2" style={{ flex: 1.5 }} />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
     </SafeAreaView>
   );
 }
@@ -1029,16 +1582,32 @@ const styles = StyleSheet.create({
     gap: spacing[2], paddingVertical: 14, borderRadius: radius.xl,
   },
   newChatText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
+  drawerItemRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing[2], borderRadius: radius.md, marginBottom: 2,
+    borderBottomWidth: 1, borderBottomColor: '#e6f0fa',
+  },
+  drawerItemRowActive: {
+    backgroundColor: 'rgba(0,132,255,0.06)',
+    borderColor: 'transparent',
+  },
   drawerItem: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing[3],
-    paddingVertical: spacing[3], borderBottomWidth: 1, borderBottomColor: '#e6f0fa',
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing[3],
+    paddingVertical: spacing[3],
   },
   drawerItemIcon: {
-    width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(0,132,255,0.08)',
+    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(100,116,139,0.1)',
     alignItems: 'center', justifyContent: 'center',
   },
+  drawerItemIconActive: {
+    backgroundColor: 'rgba(0,132,255,0.15)',
+  },
   drawerItemTitle: { fontSize: 14, fontWeight: '600', color: '#0a1629' },
+  drawerItemTitleActive: { fontWeight: '700', color: '#0084FF' },
   drawerItemMeta: { fontSize: 12, color: '#859cb5', marginTop: 2 },
+  drawerDeleteBtn: {
+    padding: spacing[2], marginLeft: spacing[1], borderRadius: radius.sm,
+  },
 
   // Modal Styles
   modalOverlay: {
@@ -1057,6 +1626,118 @@ const styles = StyleSheet.create({
   modalSub: { ...typography.styles.caption, color: colors.text.secondary, marginTop: 2 },
   modalCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.gray[100], alignItems: 'center', justifyContent: 'center' },
   modalScroll: { marginBottom: spacing[4] },
-  modalDocText: { ...typography.styles.body, color: colors.text.primary, lineHeight: 24, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', backgroundColor: colors.gray[50], padding: spacing[4], borderRadius: radius.md },
+  modalDocPaper: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: radius.md,
+    padding: spacing[5],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  modalDocText: {
+    fontSize: 14,
+    lineHeight: 24,
+    color: '#0f172a',
+    fontFamily: Platform.OS === 'ios' ? 'Times New Roman' : 'serif',
+  },
   modalFooter: { flexDirection: 'row', gap: spacing[3] },
+  downloadBtnBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0084FF',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    shadowColor: '#0084FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  downloadBtnBadgeText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  downloadBtnBadgeCredit: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  userBubbleContainer: {
+    alignItems: 'flex-end',
+    marginBottom: spacing[2],
+    maxWidth: '85%',
+    alignSelf: 'flex-end',
+  },
+  userMessageActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginRight: 4,
+  },
+  iconActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  inlineEditContainer: {
+    backgroundColor: '#0a1629',
+    borderRadius: radius.lg,
+    padding: spacing[3],
+    width: '100%',
+    minWidth: 260,
+    borderWidth: 1.5,
+    borderColor: '#0084FF',
+  },
+  inlineEditInput: {
+    color: '#ffffff',
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 50,
+    textAlignVertical: 'top',
+    padding: 0,
+    marginBottom: spacing[2],
+  },
+  inlineEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  inlineCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  inlineCancelText: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    fontWeight: '600',
+  },
+  inlineSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#0084FF',
+  },
+  inlineSubmitText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
 });

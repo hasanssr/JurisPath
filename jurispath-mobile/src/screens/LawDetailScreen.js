@@ -6,6 +6,21 @@ import { colors, typography, spacing, radius, shadows } from '../theme';
 import { Card } from '../components/ui';
 import { supabase } from '../services/supabaseClient';
 
+const formatArticleName = (raw) => {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  const isGecici = /geçici|gecici/i.test(str);
+  const isEk = /ek\s*madde/i.test(str);
+  const numbers = str.match(/\d+[a-zA-Z]?/g);
+  if (numbers && numbers.length > 0) {
+    const num = numbers[0];
+    if (isGecici) return `Geçici Madde ${num}`;
+    if (isEk) return `Ek Madde ${num}`;
+    return `Madde ${num}`;
+  }
+  return str.replace(/^(madde\s*)+/i, 'Madde ').trim();
+};
+
 export default function LawDetailScreen({ route, navigation }) {
   const { law } = route.params || { law: { number: '4857', title: 'İş Kanunu', category: 'İş Hukuku' } };
   const [articles, setArticles] = useState([]);
@@ -34,18 +49,41 @@ export default function LawDetailScreen({ route, navigation }) {
 
           const formatted = sorted.map((item, idx) => ({
             id: String(idx),
-            num: `Madde ${item.madde_no}`,
+            num: formatArticleName(item.madde_no),
             text: item.madde_metni
           }));
 
           setArticles(formatted);
-          setActiveArticle(formatted[0]);
+          
+          const matched = formatted.find(art => {
+            const artNum = String(art.num).replace(/\D/g, '');
+            const targetNum = String(law.number).replace(/\D/g, '');
+            return artNum === targetNum && targetNum !== '';
+          });
+          setActiveArticle(matched || formatted[0]);
+        } else if (law.content) {
+          const fallbackArt = {
+            id: 'ai-0',
+            num: formatArticleName(law.number),
+            text: law.content
+          };
+          setArticles([fallbackArt]);
+          setActiveArticle(fallbackArt);
         } else {
           setArticles([]);
           setActiveArticle(null);
         }
       } catch (err) {
         console.error("Error fetching articles from database:", err);
+        if (law.content) {
+          const fallbackArt = {
+            id: 'ai-0',
+            num: formatArticleName(law.number),
+            text: law.content
+          };
+          setArticles([fallbackArt]);
+          setActiveArticle(fallbackArt);
+        }
       } finally {
         setLoading(false);
       }
@@ -74,7 +112,7 @@ export default function LawDetailScreen({ route, navigation }) {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle} numberOfLines={1}>{law.title}</Text>
-          <Text style={styles.headerSubtitle}>Kanun No: {law.number} · {law.category}</Text>
+          <Text style={styles.headerSubtitle}>{activeArticle ? activeArticle.num : (law.number ? formatArticleName(law.number) : '')} · {law.category}</Text>
         </View>
         <TouchableOpacity onPress={handleShare} style={styles.backBtn} disabled={!activeArticle}>
           <Feather name="share-2" size={18} color={activeArticle ? colors.text.primary : colors.gray[300]} />
@@ -88,31 +126,15 @@ export default function LawDetailScreen({ route, navigation }) {
         </View>
       ) : articles.length > 0 ? (
         <>
-          {/* Article Selector Tabs */}
-          <View style={styles.articleTabsContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.articleTabs}>
-              {articles.map((art) => (
-                <TouchableOpacity
-                  key={art.id}
-                  style={[styles.articleTab, activeArticle?.id === art.id && styles.articleTabActive]}
-                  onPress={() => setActiveArticle(art)}
-                >
-                  <Text style={[styles.articleTabText, activeArticle?.id === art.id && styles.articleTabTextActive]}>
-                    {art.num}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
 
           {/* Article Content */}
           <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {activeArticle && (
               <Card style={styles.articleCard}>
                 <View style={styles.articleCardHeader}>
-                  <Text style={styles.articleNum}>{activeArticle.num}</Text>
+                  <Text style={styles.articleNum} selectable={true}>{activeArticle.num}</Text>
                 </View>
-                <Text style={styles.articleText}>{activeArticle.text}</Text>
+                <Text style={styles.articleText} selectable={true}>{activeArticle.text}</Text>
               </Card>
             )}
             <View style={{ height: 40 }} />

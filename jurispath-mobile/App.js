@@ -22,6 +22,10 @@ import ProfileScreen from './src/screens/ProfileScreen';
 // Detail Screens
 import LawDetailScreen from './src/screens/LawDetailScreen';
 
+// Fonts
+import { useFonts, AlexBrush_400Regular } from '@expo-google-fonts/alex-brush';
+import { Montserrat_700Bold } from '@expo-google-fonts/montserrat';
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -138,9 +142,6 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
-
-import { useFonts, AlexBrush_400Regular } from '@expo-google-fonts/alex-brush';
-import { Montserrat_700Bold } from '@expo-google-fonts/montserrat';
 
 // ─── NAVIGATION BASED ON AUTH STATE ─────────────────────
 function RootNavigator() {

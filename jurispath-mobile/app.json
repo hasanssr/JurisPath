@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "jurispath-mobile",
-    "slug": "jurispath-mobile",
+    "name": "JurisPath AI",
+    "slug": "jurispath-ai",
     "scheme": "jurispath",
     "version": "1.0.0",
     "orientation": "portrait",
