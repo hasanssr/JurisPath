@@ -53,8 +53,9 @@ npx expo start
 
 ## Özellikler
 
-- 🤖 GPT-4o ile hukuki analiz
-- ⚖️ İş, Tüketici, Kira, Aile, Trafik hukuku desteği
-- 📊 Risk skoru (1-5)
-- 🗺️ Adım adım yol haritası
-- 📋 İlgili mevzuat referansları
+- 🤖 GPT-4o ile detaylı hukuki analiz ve otomatik dilekçe/ihtarname üretimi
+- ⚖️ İş, Tüketici, Kira, Aile, Ceza ve Trafik hukuku desteği
+- 📊 Güven & Risk Skoru (%1 - %100)
+- 🗺️ Adım adım yasal eylem planı ve yol haritası
+- 📋 İlgili T.C. mevzuatı ve kanun maddesi referansları (RAG / Vektör Arama desteği)
+- 📄 Belge ve Görsel analizi (PDF ve fotoğraf okuma desteği)
