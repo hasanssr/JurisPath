@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
 import { supabase } from '../services/supabaseClient';
 import * as WebBrowser from 'expo-web-browser';
@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
 
   const [credits, setCredits] = useState(5);
 
-  const fetchProfile = async (userId) => {
+  const fetchProfile = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.log('Error fetching user profile:', err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Check for existing session on mount
@@ -81,10 +81,10 @@ export function AuthProvider({ children }) {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchProfile]);
 
   // ── Email/Password Sign Up ──────────────────────
-  const signUpWithEmail = async (email, password, fullName) => {
+  const signUpWithEmail = useCallback(async (email, password, fullName) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -95,10 +95,10 @@ export function AuthProvider({ children }) {
 
     if (error) throw error;
     return data;
-  };
+  }, []);
 
   // ── Email/Password Sign In ──────────────────────
-  const signInWithEmail = async (email, password) => {
+  const signInWithEmail = useCallback(async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -106,10 +106,10 @@ export function AuthProvider({ children }) {
 
     if (error) throw error;
     return data;
-  };
+  }, []);
 
   // ── Google OAuth Sign In ────────────────────────
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = useCallback(async () => {
     try {
       const redirectUrl = makeRedirectUri({
         scheme: 'jurispath',
@@ -159,22 +159,22 @@ export function AuthProvider({ children }) {
     } catch (error) {
       throw error;
     }
-  };
+  }, []);
 
   // ── Sign Out ────────────────────────────────────
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-  };
+  }, []);
 
   // ── Password Reset ──────────────────────────────
-  const resetPassword = async (email) => {
+  const resetPassword = useCallback(async (email) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email);
     if (error) throw error;
-  };
+  }, []);
 
   // ── Update/Modify Credits ───────────────────────
-  const updateCreditsInDb = async (newCredits) => {
+  const updateCreditsInDb = useCallback(async (newCredits) => {
     if (!user) return;
     const { error } = await supabase
       .from('user_profiles')
@@ -183,21 +183,25 @@ export function AuthProvider({ children }) {
 
     if (error) throw error;
     setCredits(newCredits);
-  };
+  }, [user]);
 
-  const value = {
+  const refreshCredits = useCallback(() => {
+    if (user) fetchProfile(user.id);
+  }, [user, fetchProfile]);
+
+  const value = useMemo(() => ({
     user,
     session,
     loading,
     credits,
-    refreshCredits: () => user && fetchProfile(user.id),
+    refreshCredits,
     updateCredits: updateCreditsInDb,
     signUpWithEmail,
     signInWithEmail,
     signInWithGoogle,
     signOut,
     resetPassword,
-  };
+  }), [user, session, loading, credits, refreshCredits, updateCreditsInDb, signUpWithEmail, signInWithEmail, signInWithGoogle, signOut, resetPassword]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

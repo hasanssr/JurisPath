@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Animated, Image, Dimensions, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Animated, Dimensions, Modal } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography, spacing, radius, shadows } from '../theme';
@@ -176,7 +177,7 @@ function ZoomModal({ card, onClose, navigation }) {
             ]}
           >
             <TouchableOpacity activeOpacity={0.9} onPress={handleFlip} style={styles.zoomCardTouchable}>
-              <Image source={card.image} style={styles.zoomCardImage} resizeMode="cover" />
+              <Image source={card.image} style={styles.zoomCardImage} contentFit="cover" />
               <View style={styles.zoomCardTitleOverlay}>
                 <Text style={styles.zoomCardTitleLine1}>{card.titleLine1}</Text>
                 <Text style={styles.zoomCardTitleLine2}>{card.titleLine2}</Text>
@@ -344,7 +345,7 @@ export default function DashboardScreen({ navigation }) {
                 onPress={() => setZoomedCard(card)}
               >
                 <View style={styles.flipCardFace}>
-                  <Image source={card.image} style={styles.flipCardImage} resizeMode="cover" />
+                  <Image source={card.image} style={styles.flipCardImage} contentFit="cover" />
                   <View style={styles.flipCardTitleOverlay}>
                     <Text style={styles.flipCardTitleLine1}>{card.titleLine1}</Text>
                     <Text style={styles.flipCardTitleLine2}>{card.titleLine2}</Text>

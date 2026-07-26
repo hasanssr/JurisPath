@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Animated, Dimensions, StatusBar, KeyboardAvoidingView, Platform, ScrollView, Image, Keyboard, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Animated, Dimensions, StatusBar, KeyboardAvoidingView, Platform, ScrollView, Keyboard, ActivityIndicator, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -183,7 +184,7 @@ export default function LoginScreen({ navigation }) {
               <Image
                 source={require('../../assets/team_photo.png')}
                 style={styles.logoImage}
-                resizeMode="contain"
+                contentFit="contain"
               />
             </Animated.View>
 

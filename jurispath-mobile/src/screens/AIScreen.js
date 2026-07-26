@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Share, Animated, Alert, Dimensions, Keyboard } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, FlatList, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Share, Animated, Alert, Dimensions, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -19,26 +19,13 @@ import { API_BASE_URL } from '../constants/config';
 
 const DISCLAIMER_TEXT = "Bu belge bilgi amaçlı örnek dilekçedir, hukuki tavsiye niteliği taşımaz.";
 
-const SelectableText = ({ text, style, selectionColor = '#0084FF' }) => {
+const SelectableText = React.memo(({ text, style }) => {
   return (
-    <TextInput
-      editable={false}
-      multiline={true}
-      scrollEnabled={false}
-      selectionColor={selectionColor}
-      style={[
-        style,
-        {
-          padding: 0,
-          margin: 0,
-          textAlignVertical: 'top',
-          backgroundColor: 'transparent',
-        }
-      ]}
-      value={String(text || '')}
-    />
+    <Text selectable={true} style={style}>
+      {String(text || '')}
+    </Text>
   );
-};
+});
 
 const sanitizeHeaderLocation = (headerStr) => {
   if (!headerStr) return headerStr;
@@ -670,11 +657,20 @@ export default function AIScreen({ route, navigation }) {
         });
       }
 
-      const response = await fetch(`${API_BASE_URL}/analyze`, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 40000);
+
+      let response;
+      try {
+        response = await fetch(`${API_BASE_URL}/analyze`, {
+          method: 'POST',
+          headers,
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
@@ -1081,15 +1077,18 @@ export default function AIScreen({ route, navigation }) {
         </View>
 
         {/* Messages */}
-        <ScrollView
+        <FlatList
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={styles.messagesContent}
+          contentContainerStyle={[styles.messagesContent, messages.length === 0 && { flex: 1 }]}
           showsVerticalScrollIndicator={false}
-        >
-          {messages.length === 0 && <View style={{ flex: 1 }} />}
-
-          {messages.map((msg) => (
+          data={messages}
+          keyExtractor={item => item.id}
+          initialNumToRender={8}
+          maxToRenderPerBatch={5}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
+          renderItem={({ item: msg }) => (
             <AnimatedMessage key={msg.id} isUser={msg.type === 'user'}>
               {msg.type === 'user' ? (
                 <View style={styles.userBubbleContainer}>
@@ -1136,7 +1135,7 @@ export default function AIScreen({ route, navigation }) {
                             <Text style={styles.bubbleAttachmentText} numberOfLines={1}>{msg.file.name}</Text>
                           </View>
                         )}
-                        <SelectableText text={msg.text} style={styles.userText} selectionColor="#38bdf8" />
+                        <SelectableText text={msg.text} style={styles.userText} />
                       </View>
                       <View style={styles.userMessageActions}>
                         <TouchableOpacity 
@@ -1169,19 +1168,23 @@ export default function AIScreen({ route, navigation }) {
                 </View>
               )}
             </AnimatedMessage>
-          ))}
-
-          {loading && (
-            <View style={{ marginVertical: spacing[2], width: '100%' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[2], paddingLeft: 4 }}>
-                <ActivityIndicator size="small" color={colors.teal[600]} />
-                <Text style={{ ...typography.styles.caption, color: colors.text.secondary, fontWeight: '600' }}>Yapay zeka analiz ediyor...</Text>
-              </View>
-              <SkeletonCard />
-            </View>
           )}
-          <View style={{ height: 20 }} />
-        </ScrollView>
+          ListEmptyComponent={<View style={{ flex: 1 }} />}
+          ListFooterComponent={
+            <>
+              {loading && (
+                <View style={{ marginVertical: spacing[2], width: '100%' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2], marginBottom: spacing[2], paddingLeft: 4 }}>
+                    <ActivityIndicator size="small" color={colors.teal[600]} />
+                    <Text style={{ ...typography.styles.caption, color: colors.text.secondary, fontWeight: '600' }}>Yapay zeka analiz ediyor...</Text>
+                  </View>
+                  <SkeletonCard />
+                </View>
+              )}
+              <View style={{ height: 20 }} />
+            </>
+          }
+        />
 
         {/* Modern gradient input bar */}
         <View style={[

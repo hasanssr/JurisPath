@@ -8,7 +8,7 @@ import { typography } from '../theme/typography';
 import { spacing, radius, shadows } from '../theme/spacing';
 
 // ─── SEARCH BAR ─────────────────────────────────────────
-export function SearchBar({ value, onChangeText, placeholder = 'Ara...', onSubmit, style }) {
+export const SearchBar = React.memo(function SearchBar({ value, onChangeText, placeholder = 'Ara...', onSubmit, style }) {
   return (
     <View style={[styles.searchContainer, style]}>
       <Feather name="search" size={18} color={colors.gray[400]} style={{ marginRight: spacing[2] }} />
@@ -28,10 +28,10 @@ export function SearchBar({ value, onChangeText, placeholder = 'Ara...', onSubmi
       )}
     </View>
   );
-}
+});
 
 // ─── BADGE ──────────────────────────────────────────────
-export function Badge({ label, variant = 'default', size = 'md' }) {
+export const Badge = React.memo(function Badge({ label, variant = 'default', size = 'md' }) {
   const variantStyles = {
     default: { bg: colors.gray[100], text: colors.gray[600] },
     primary: { bg: colors.navy[100], text: colors.navy[700] },
@@ -48,10 +48,10 @@ export function Badge({ label, variant = 'default', size = 'md' }) {
       <Text style={[styles.badgeText, { color: v.text }, isSmall && { fontSize: 10 }]}>{label}</Text>
     </View>
   );
-}
+});
 
 // ─── CARD ───────────────────────────────────────────────
-export function Card({ children, style, onPress, padded = true }) {
+export const Card = React.memo(function Card({ children, style, onPress, padded = true }) {
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
     <Wrapper
@@ -62,10 +62,10 @@ export function Card({ children, style, onPress, padded = true }) {
       {children}
     </Wrapper>
   );
-}
+});
 
 // ─── SECTION HEADER ─────────────────────────────────────
-export function SectionHeader({ title, actionLabel, onAction, style }) {
+export const SectionHeader = React.memo(function SectionHeader({ title, actionLabel, onAction, style }) {
   return (
     <View style={[styles.sectionHeader, style]}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -76,10 +76,10 @@ export function SectionHeader({ title, actionLabel, onAction, style }) {
       )}
     </View>
   );
-}
+});
 
 // ─── STAT CARD ──────────────────────────────────────────
-export function StatCard({ icon, label, value, color = colors.navy[700], style }) {
+export const StatCard = React.memo(function StatCard({ icon, label, value, color = colors.navy[700], style }) {
   return (
     <View style={[styles.statCard, style]}>
       <View style={[styles.statIcon, { backgroundColor: color + '12' }]}>
@@ -89,10 +89,10 @@ export function StatCard({ icon, label, value, color = colors.navy[700], style }
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
-}
+});
 
 // ─── LIST ITEM ──────────────────────────────────────────
-export function ListItem({ icon, iconColor, title, subtitle, right, onPress, borderBottom = true }) {
+export const ListItem = React.memo(function ListItem({ icon, iconColor, title, subtitle, right, onPress, borderBottom = true }) {
   return (
     <TouchableOpacity
       style={[styles.listItem, borderBottom && styles.listItemBorder]}
@@ -111,7 +111,7 @@ export function ListItem({ icon, iconColor, title, subtitle, right, onPress, bor
       {right || <Feather name="chevron-right" size={16} color={colors.gray[300]} />}
     </TouchableOpacity>
   );
-}
+});
 
 // ─── BUTTON ─────────────────────────────────────────────
 export function Button({ label, onPress, variant = 'primary', icon, loading, disabled, style, size = 'md' }) {
@@ -180,7 +180,7 @@ export function Button({ label, onPress, variant = 'primary', icon, loading, dis
 }
 
 // ─── EMPTY STATE ────────────────────────────────────────
-export function EmptyState({ icon, title, description, actionLabel, onAction }) {
+export const EmptyState = React.memo(function EmptyState({ icon, title, description, actionLabel, onAction }) {
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
@@ -193,10 +193,10 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }) 
       )}
     </View>
   );
-}
+});
 
 // ─── CONFIDENCE METER ───────────────────────────────────
-export function ConfidenceMeter({ score = 0, label }) {
+export const ConfidenceMeter = React.memo(function ConfidenceMeter({ score = 0, label }) {
   const getColor = (s) => {
     if (s >= 80) return colors.success[600];
     if (s >= 60) return colors.teal[600];
@@ -212,10 +212,10 @@ export function ConfidenceMeter({ score = 0, label }) {
       <Text style={[styles.confidenceValue, { color: getColor(score) }]}>{score}%</Text>
     </View>
   );
-}
+});
 
 // ─── HERO GRADIENT ──────────────────────────────────────
-export function HeroGradient({ children, gradColors = [colors.navy[900], colors.navy[800]], style }) {
+export const HeroGradient = React.memo(function HeroGradient({ children, gradColors = [colors.navy[900], colors.navy[800]], style }) {
   return (
     <LinearGradient
       colors={gradColors}
@@ -229,7 +229,7 @@ export function HeroGradient({ children, gradColors = [colors.navy[900], colors.
       {children}
     </LinearGradient>
   );
-}
+});
 
 // ─── 3D AI ASSISTANT ORB ────────────────────────────────
 export function ThreeDOrb({ size = 120 }) {
