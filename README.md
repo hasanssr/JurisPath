@@ -32,15 +32,13 @@ Uygulama yalnızca bilgi vermekle kalmaz; ilgili T.C. kanun maddelerini veritaba
 
 ## 📱 Ekran Görüntüleri
 
-> _Ekran görüntüleri yakında eklenecektir._
+| Karşılama | Giriş | Ana Sayfa |
+|:-:|:-:|:-:|
+| <img src="screenshots/img1.jpeg" width="220"/> | <img src="screenshots/img2.jpeg" width="220"/> | <img src="screenshots/img3.jpeg" width="220"/> |
 
-<!--
-Ekran görüntülerini assets/screenshots/ klasörüne ekledikten sonra:
-
-![Ana Ekran](assets/screenshots/dashboard.png)
-![AI Analiz](assets/screenshots/ai_screen.png)
-![Dilekçe Önizleme](assets/screenshots/document.png)
--->
+| AI Analiz | Kredi & Paketler | Dilekçe Önizleme |
+|:-:|:-:|:-:|
+| <img src="screenshots/img4.jpeg" width="220"/> | <img src="screenshots/img5.jpeg" width="220"/> | <img src="screenshots/img6.jpeg" width="220"/> |
 
 ## Proje Yapısı
 
