@@ -95,10 +95,6 @@ npx expo start
 }
 ```
 
-## Motivasyon
-
-Bu proje, Microsoft Volunteer Internship programı kapsamında geliştirilmiştir. Projenin fikri mülkiyeti tarafıma aittir. Amacım, hukuki danışmanlık hizmetlerine erişimi olmayan vatandaşların temel yasal haklarını öğrenmesini kolaylaştıran, erişilebilir ve kullanımı kolay bir araç ortaya koymaktı.
-
 ## Lisans
 
 Bu proje kişisel bir portföy çalışmasıdır.
